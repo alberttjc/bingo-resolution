@@ -3,6 +3,7 @@ import type { Metadata } from 'next'
 import { Geist, Geist_Mono, Montserrat } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { BingoProvider } from '@/lib/bingo-context'
+import { Toaster } from '@/components/ui/toaster'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -44,6 +45,7 @@ export default function RootLayout({
           {children}
         </BingoProvider>
         <Analytics />
+        <Toaster />
       </body>
     </html>
   )

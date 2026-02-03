@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useToast } from '@/hooks/use-toast'
 
 import { ArrowLeft, Download, Share2, FileImage, FileText } from 'lucide-react'
 import { useBingo } from '@/lib/bingo-context'
@@ -26,11 +27,22 @@ export default function ExportPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { cardData } = useBingo()
+  const { toast } = useToast()
   const cardRef = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState<PrintSize>('a4')
   const [format, setFormat] = useState<ExportFormat>('pdf')
   const [isExporting, setIsExporting] = useState(false)
+  const [exportProgress, setExportProgress] = useState('')
   const isSharing = searchParams.get('share') === 'true'
+
+  // Track created resources for cleanup
+  const cleanupRefs = useRef<{
+    blobUrls: string[]
+    downloadLinks: HTMLAnchorElement[]
+  }>({
+    blobUrls: [],
+    downloadLinks: []
+  })
 
   useEffect(() => {
     // Redirect if no goals set
@@ -39,118 +51,524 @@ export default function ExportPage() {
     }
   }, [cardData.goals, router])
 
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      cleanupResources()
+    }
+  }, [])
+
+  const cleanupResources = () => {
+    // Revoke all blob URLs
+    cleanupRefs.current.blobUrls.forEach(url => {
+      URL.revokeObjectURL(url)
+    })
+    cleanupRefs.current.blobUrls = []
+
+    // Remove all download links from DOM
+    cleanupRefs.current.downloadLinks.forEach(link => {
+      if (link.parentNode) {
+        link.parentNode.removeChild(link)
+      }
+    })
+    cleanupRefs.current.downloadLinks = []
+  }
+
+  const getErrorMessage = (errorType: string) => {
+    const messages: Record<string, { title: string; description: string }> = {
+      'ref-missing': {
+        title: 'Card Not Ready',
+        description: 'Please wait a moment and try again.'
+      },
+      'rendering-failed': {
+        title: 'Export Failed',
+        description: 'Could not export the card. Try a smaller paper size or simpler theme.'
+      },
+      'size-exceeded': {
+        title: 'File Too Large',
+        description: 'Try a smaller paper size (A5 or A4).'
+      },
+      'share-failed': {
+        title: 'Share Not Available',
+        description: 'Your device does not support sharing. Downloading instead.'
+      },
+      'unknown': {
+        title: 'Export Failed',
+        description: 'Please try again with a smaller paper size.'
+      }
+    }
+    return messages[errorType] || messages['unknown']
+  }
+
+  // Helper: Check if error is retryable
+  function isRetryableError(error: Error): boolean {
+    const errorMsg = error.message.toLowerCase()
+    return errorMsg.includes('size') ||
+           errorMsg.includes('memory') ||
+           errorMsg.includes('too large') ||
+           errorMsg.includes('timeout') ||
+           errorMsg.includes('blob')
+  }
+
+  // Helper: Render card to canvas
+  async function renderCardToCanvas(
+    element: HTMLDivElement,
+    scale: number,
+    onProgress: (message: string) => void
+  ): Promise<HTMLCanvasElement> {
+    const { toPng } = await import('html-to-image')
+
+    onProgress('Rendering card...')
+
+    // Wait for fonts to load before capturing
+    await document.fonts.ready
+
+    // Create timeout promise
+    const renderTimeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Rendering timeout')), 20000)
+    })
+
+    // Convert DOM to PNG data URL
+    const dataUrl = await Promise.race([
+      toPng(element, {
+        pixelRatio: scale,
+        backgroundColor: '#ffffff',
+        cacheBust: true
+      }),
+      renderTimeoutPromise
+    ])
+
+    // Convert data URL to canvas
+    const canvas = document.createElement('canvas')
+    const ctx = canvas.getContext('2d')
+    const img = new Image()
+
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => {
+        canvas.width = img.width
+        canvas.height = img.height
+        ctx?.drawImage(img, 0, 0)
+        resolve()
+      }
+      img.onerror = reject
+      img.src = dataUrl
+    })
+
+    return canvas
+  }
+
+  // Helper: Convert canvas to blob
+  async function canvasToBlob(
+    canvas: HTMLCanvasElement,
+    format: 'jpeg' | 'png' = 'jpeg',
+    quality: number = 0.95
+  ): Promise<Blob> {
+    const createBlobPromise = new Promise<Blob>((resolve, reject) => {
+      try {
+        canvas.toBlob(
+          (blob) => {
+            if (blob) {
+              resolve(blob)
+            } else {
+              reject(new Error('canvas.toBlob returned null - canvas may be tainted or too large'))
+            }
+          },
+          `image/${format}`,
+          quality
+        )
+      } catch (error) {
+        reject(error)
+      }
+    })
+
+    const blobTimeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('Blob creation timeout - file may be too large')), 10000)
+    })
+
+    return Promise.race([createBlobPromise, blobTimeoutPromise])
+  }
+
+  // Helper: Validate canvas
+  const validateCanvas = (canvas: HTMLCanvasElement): {
+    valid: boolean
+    errorType?: string
+  } => {
+    // Check canvas dimensions
+    if (canvas.width === 0 || canvas.height === 0) {
+      console.error('[Export] Invalid canvas dimensions')
+      return { valid: false, errorType: 'rendering-failed' }
+    }
+
+    // Estimate memory size (4 bytes per pixel for RGBA)
+    const estimatedSize = canvas.width * canvas.height * 4
+    const maxSize = 100 * 1024 * 1024 // 100MB limit
+
+    if (estimatedSize > maxSize) {
+      console.error('[Export] Canvas size exceeded')
+      return { valid: false, errorType: 'size-exceeded' }
+    }
+
+    return { valid: true }
+  }
+
+  // Helper: Validate card ref
+  const validateCardRef = (): boolean => {
+    if (!cardRef.current) {
+      const error = getErrorMessage('ref-missing')
+      toast({
+        title: error.title,
+        description: error.description,
+        variant: 'destructive'
+      })
+      return false
+    }
+    return true
+  }
+
   const handleExport = async () => {
-    if (!cardRef.current) return
+    if (!validateCardRef()) return
 
     setIsExporting(true)
+    setExportProgress('Preparing...')
+
+    // Cleanup any previous exports
+    cleanupResources()
+
     try {
-      // Dynamically import html2canvas
-      const html2canvas = (await import('html2canvas')).default
-      
-      const canvas = await html2canvas(cardRef.current, {
-        scale: 3,
-        backgroundColor: '#ffffff',
-        logging: false,
-        useCORS: true,
-        allowTaint: true
-      })
-
-      if (format === 'jpeg') {
-        // Export as JPEG
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
-        const link = document.createElement('a')
-        link.download = `resolution-bingo-${Date.now()}.jpg`
-        link.href = dataUrl
-        link.click()
-      } else {
-        // Export as PDF
-        const { jsPDF } = await import('jspdf')
-        const imgData = canvas.toDataURL('image/jpeg', 0.95)
-        
-        // Get dimensions in mm for the selected size
-        const sizeConfig = printSizes[size]
-        const pdfWidth = size === 'a5' ? 148 : size === 'a4' ? 210 : size === 'a3' ? 297 : 420
-        const pdfHeight = size === 'a5' ? 210 : size === 'a4' ? 297 : size === 'a3' ? 420 : 594
-        
-        const pdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: [pdfWidth, pdfHeight]
-        })
-
-        // Calculate dimensions to fit page with margin
-        const margin = 10
-        const availableWidth = pdfWidth - (margin * 2)
-        const availableHeight = pdfHeight - (margin * 2)
-        
-        const imgRatio = canvas.width / canvas.height
-        const pageRatio = availableWidth / availableHeight
-        
-        let finalWidth = availableWidth
-        let finalHeight = availableHeight
-        
-        if (imgRatio > pageRatio) {
-          finalHeight = availableWidth / imgRatio
-        } else {
-          finalWidth = availableHeight * imgRatio
+      // Adaptive scale based on paper size to prevent memory issues
+      const getAdaptiveScale = (paperSize: PrintSize): number => {
+        switch (paperSize) {
+          case 'a2': return 1.5
+          case 'a3': return 1.75
+          case 'a4': return 2
+          case 'a5': return 2.5
+          default: return 2
         }
-        
-        const x = (pdfWidth - finalWidth) / 2
-        const y = (pdfHeight - finalHeight) / 2
-        
-        pdf.addImage(imgData, 'JPEG', x, y, finalWidth, finalHeight)
-        pdf.save(`resolution-bingo-${Date.now()}.pdf`)
       }
-    } catch (error) {
-      console.error('[v0] Export error:', error)
-      alert('Failed to export. Please try again.')
+
+      // Progressive fallback: try with optimal scale, fallback to lower scales if needed
+      const scaleAttempts = [
+        getAdaptiveScale(size),
+        Math.max(1, getAdaptiveScale(size) - 0.5),
+        1
+      ]
+
+      let lastError: Error | null = null
+
+      for (let attemptIndex = 0; attemptIndex < scaleAttempts.length; attemptIndex++) {
+        const attemptScale = scaleAttempts[attemptIndex]
+
+        try {
+          setExportProgress(attemptIndex === 0 ? 'Rendering card...' : `Retrying with lower quality (attempt ${attemptIndex + 1})...`)
+
+          // Render card to canvas
+          const canvas = await renderCardToCanvas(
+            cardRef.current!,
+            attemptScale,
+            setExportProgress
+          )
+
+          // Validate canvas
+          const validation = validateCanvas(canvas)
+          if (!validation.valid) {
+            // If validation failed and we have more attempts, throw to trigger retry
+            if (attemptIndex < scaleAttempts.length - 1 &&
+                (validation.errorType === 'size-exceeded' || validation.errorType === 'rendering-failed')) {
+              throw new Error(validation.errorType!)
+            }
+
+            // Last attempt or non-retryable error, show error to user
+            const error = getErrorMessage(validation.errorType!)
+            toast({
+              title: error.title,
+              description: error.description,
+              variant: 'destructive'
+            })
+            return
+          }
+
+          if (format === 'jpeg') {
+            // Export as JPEG
+            setExportProgress('Converting to JPEG...')
+            const blob = await canvasToBlob(canvas, 'jpeg', 0.95)
+
+            setExportProgress('Downloading...')
+
+            const blobUrl = URL.createObjectURL(blob)
+            cleanupRefs.current.blobUrls.push(blobUrl)
+
+            const link = document.createElement('a')
+            link.download = `resolution-bingo-${Date.now()}.jpg`
+            link.href = blobUrl
+            document.body.appendChild(link)
+            cleanupRefs.current.downloadLinks.push(link)
+
+            link.click()
+
+            // Schedule cleanup after download starts
+            setTimeout(() => {
+              cleanupResources()
+            }, 3000)
+
+            toast({
+              title: 'Download Started',
+              description: attemptIndex > 0
+                ? 'Your JPEG image is being downloaded (quality adjusted to prevent errors).'
+                : 'Your JPEG image is being downloaded.'
+            })
+          } else {
+            // Export as PDF
+            setExportProgress('Creating PDF...')
+
+            const { jsPDF } = await import('jspdf')
+
+            let imgData: string
+            try {
+              imgData = canvas.toDataURL('image/jpeg', 0.95)
+            } catch (error) {
+              console.error('[Export] toDataURL failed:', error)
+              throw new Error('Failed to convert canvas to data URL - canvas may be tainted or too large')
+            }
+
+            // Get dimensions in mm for the selected size
+            const pdfWidth = size === 'a5' ? 148 : size === 'a4' ? 210 : size === 'a3' ? 297 : 420
+            const pdfHeight = size === 'a5' ? 210 : size === 'a4' ? 297 : size === 'a3' ? 420 : 594
+
+            const pdf = new jsPDF({
+              orientation: 'portrait',
+              unit: 'mm',
+              format: [pdfWidth, pdfHeight]
+            })
+
+            // Calculate dimensions to fit page with margin
+            const margin = 10
+            const availableWidth = pdfWidth - (margin * 2)
+            const availableHeight = pdfHeight - (margin * 2)
+
+            const imgRatio = canvas.width / canvas.height
+            const pageRatio = availableWidth / availableHeight
+
+            let finalWidth = availableWidth
+            let finalHeight = availableHeight
+
+            if (imgRatio > pageRatio) {
+              finalHeight = availableWidth / imgRatio
+            } else {
+              finalWidth = availableHeight * imgRatio
+            }
+
+            const x = (pdfWidth - finalWidth) / 2
+            const y = (pdfHeight - finalHeight) / 2
+
+            setExportProgress('Downloading...')
+            pdf.addImage(imgData, 'JPEG', x, y, finalWidth, finalHeight)
+            pdf.save(`resolution-bingo-${Date.now()}.pdf`)
+
+            toast({
+              title: 'Download Started',
+              description: attemptIndex > 0
+                ? `Your ${size.toUpperCase()} PDF is being downloaded (quality adjusted to prevent errors).`
+                : `Your ${size.toUpperCase()} PDF is being downloaded.`
+            })
+          }
+
+          // Success! Break out of retry loop
+          break
+
+        } catch (error) {
+          console.error(`[Export] Attempt ${attemptIndex + 1} failed:`, error)
+          lastError = error as Error
+
+          // If this isn't the last attempt and it's a retryable error, continue
+          if (attemptIndex < scaleAttempts.length - 1 && isRetryableError(lastError)) {
+            continue
+          }
+
+          // Non-retryable error or last attempt - break and handle below
+          break
+        }
+      }
+
+      // If we get here and lastError exists, all attempts failed
+      if (lastError) {
+        console.error('[Export] All export attempts failed:', lastError)
+
+        // Determine error type from error message
+        let errorType = 'unknown'
+        const errorMsg = lastError.message.toLowerCase()
+
+        if (errorMsg.includes('size') || errorMsg.includes('too large') || errorMsg.includes('exceeded')) {
+          errorType = 'size-exceeded'
+        } else if (errorMsg.includes('render') || errorMsg.includes('canvas') || errorMsg.includes('timeout')) {
+          errorType = 'rendering-failed'
+        }
+
+        const error = getErrorMessage(errorType)
+        toast({
+          title: error.title,
+          description: error.description,
+          variant: 'destructive'
+        })
+      }
     } finally {
       setIsExporting(false)
+      setExportProgress('')
     }
   }
 
   const handleShare = async () => {
-    if (!cardRef.current) return
+    if (!validateCardRef()) return
 
     setIsExporting(true)
+    setExportProgress('Preparing...')
+
+    // Cleanup any previous exports
+    cleanupResources()
+
     try {
-      const html2canvas = (await import('html2canvas')).default
-      
-      const canvas = await html2canvas(cardRef.current, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        logging: false
-      })
+      // Use adaptive scale for share (A4 size equivalent)
+      const shareScaleAttempts = [2, 1.5, 1]
 
-      canvas.toBlob(async (blob) => {
-        if (!blob) return
+      let lastError: Error | null = null
 
-        const file = new File([blob], 'resolution-bingo.jpg', { type: 'image/jpeg' })
+      for (let attemptIndex = 0; attemptIndex < shareScaleAttempts.length; attemptIndex++) {
+        const attemptScale = shareScaleAttempts[attemptIndex]
 
-        if (navigator.share && navigator.canShare({ files: [file] })) {
-          try {
-            await navigator.share({
-              files: [file],
-              title: 'My Resolution Bingo Card',
-              text: 'Check out my New Year\'s Resolution Bingo Card!'
+        try {
+          setExportProgress(attemptIndex === 0 ? 'Rendering card...' : `Retrying with lower quality (attempt ${attemptIndex + 1})...`)
+
+          // Render card to canvas
+          const canvas = await renderCardToCanvas(
+            cardRef.current!,
+            attemptScale,
+            setExportProgress
+          )
+
+          // Validate canvas
+          const validation = validateCanvas(canvas)
+          if (!validation.valid) {
+            // If validation failed and we have more attempts, throw to trigger retry
+            if (attemptIndex < shareScaleAttempts.length - 1 &&
+                (validation.errorType === 'size-exceeded' || validation.errorType === 'rendering-failed')) {
+              throw new Error(validation.errorType!)
+            }
+
+            // Last attempt or non-retryable error, show error to user
+            const error = getErrorMessage(validation.errorType!)
+            toast({
+              title: error.title,
+              description: error.description,
+              variant: 'destructive'
             })
-          } catch (err) {
-            console.log('[v0] Share cancelled or failed:', err)
+            return
           }
-        } else {
-          // Fallback: download the image
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.95)
-          const link = document.createElement('a')
-          link.download = `resolution-bingo-share-${Date.now()}.jpg`
-          link.href = dataUrl
-          link.click()
+
+          setExportProgress('Converting to image...')
+
+          const blob = await canvasToBlob(canvas, 'jpeg', 0.95)
+          const file = new File([blob], 'resolution-bingo.jpg', { type: 'image/jpeg' })
+
+          if (navigator.share && navigator.canShare({ files: [file] })) {
+            // Native share available
+            setExportProgress('Opening share dialog...')
+
+            try {
+              await navigator.share({
+                files: [file],
+                title: 'My Resolution Bingo Card',
+                text: 'Check out my New Year\'s Resolution Bingo Card!'
+              })
+
+              toast({
+                title: 'Shared Successfully',
+                description: 'Your bingo card has been shared.'
+              })
+            } catch (err: any) {
+              // Check if user cancelled
+              if (err.name === 'AbortError') {
+                toast({
+                  title: 'Share Cancelled',
+                  description: 'You cancelled the share action.'
+                })
+              } else {
+                console.error('[Share] Share failed:', err)
+                const error = getErrorMessage('share-failed')
+                toast({
+                  title: error.title,
+                  description: error.description,
+                  variant: 'destructive'
+                })
+              }
+            }
+          } else {
+            // Fallback: download the image
+            setExportProgress('Downloading...')
+
+            const blobUrl = URL.createObjectURL(blob)
+            cleanupRefs.current.blobUrls.push(blobUrl)
+
+            const link = document.createElement('a')
+            link.download = `resolution-bingo-share-${Date.now()}.jpg`
+            link.href = blobUrl
+            document.body.appendChild(link)
+            cleanupRefs.current.downloadLinks.push(link)
+
+            link.click()
+
+            // Schedule cleanup after download starts
+            setTimeout(() => {
+              cleanupResources()
+            }, 3000)
+
+            toast({
+              title: 'Download Started',
+              description: attemptIndex > 0
+                ? 'Share is not available on this device. Your image is being downloaded (quality adjusted to prevent errors).'
+                : 'Share is not available on this device. Your image is being downloaded instead.'
+            })
+          }
+
+          // Success! Break out of retry loop
+          break
+
+        } catch (error) {
+          console.error(`[Share] Attempt ${attemptIndex + 1} failed:`, error)
+          lastError = error as Error
+
+          // If this isn't the last attempt and it's a retryable error, continue
+          if (attemptIndex < shareScaleAttempts.length - 1 && isRetryableError(lastError)) {
+            continue
+          }
+
+          // Non-retryable error or last attempt - break and handle below
+          break
         }
-      }, 'image/jpeg', 0.95)
-    } catch (error) {
-      console.error('[v0] Share error:', error)
-      alert('Failed to share. Please try again.')
+      }
+
+      // If we get here and lastError exists, all attempts failed
+      if (lastError) {
+        console.error('[Share] All share attempts failed:', lastError)
+
+        // Determine error type from error message
+        let errorType = 'share-failed'
+        const errorMsg = lastError.message.toLowerCase()
+
+        if (errorMsg.includes('size') || errorMsg.includes('too large') || errorMsg.includes('exceeded')) {
+          errorType = 'size-exceeded'
+        } else if (errorMsg.includes('render') || errorMsg.includes('canvas') || errorMsg.includes('timeout')) {
+          errorType = 'rendering-failed'
+        }
+
+        const error = getErrorMessage(errorType)
+        toast({
+          title: error.title,
+          description: error.description,
+          variant: 'destructive'
+        })
+      }
     } finally {
       setIsExporting(false)
+      setExportProgress('')
     }
   }
 
@@ -194,14 +612,14 @@ export default function ExportPage() {
                       </p>
                     </div>
 
-                    <Button 
-                      className="w-full" 
+                    <Button
+                      className="w-full"
                       size="lg"
                       onClick={handleShare}
                       disabled={isExporting}
                     >
                       <Share2 className="w-4 h-4 mr-2" />
-                      {isExporting ? 'Generating...' : 'Share Card'}
+                      {isExporting ? (exportProgress || 'Generating...') : 'Share Card'}
                     </Button>
 
                     <div className="pt-4 border-t">
@@ -280,14 +698,14 @@ export default function ExportPage() {
                 )}
 
                 {!isSharing && (
-                  <Button 
-                    className="w-full mt-4" 
+                  <Button
+                    className="w-full mt-4"
                     size="lg"
                     onClick={handleExport}
                     disabled={isExporting}
                   >
                     <Download className="w-4 h-4 mr-2" />
-                    {isExporting ? 'Generating...' : `Download ${format.toUpperCase()}`}
+                    {isExporting ? (exportProgress || 'Generating...') : `Download ${format.toUpperCase()}`}
                   </Button>
                 )}
               </Card>
@@ -299,7 +717,8 @@ export default function ExportPage() {
                   <li>• PDF format is best for printing</li>
                   <li>• JPEG is perfect for social media</li>
                   <li>• A4 is the most common print size</li>
-                  <li>• All exports are 300 DPI (print quality)</li>
+                  <li>• Quality is optimized for each paper size</li>
+                  <li>• Export automatically retries if issues occur</li>
                 </ul>
               </Card>
             </div>
