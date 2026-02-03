@@ -210,7 +210,7 @@ export function BingoCard({
               </h2>
             </div>
             <p className="text-base md:text-xl font-bold uppercase tracking-wide text-[#E63946]">
-              What Will 2026 Have In Store For You?
+              {title}
             </p>
           </div>
         ) : isWhimsical ? (
@@ -229,7 +229,7 @@ export function BingoCard({
           <div className="text-center space-y-3">
             <p className="text-sm uppercase tracking-widest text-gray-500">PureWow</p>
             <h2 className={cn('text-3xl md:text-4xl font-serif', themeStyles.title)}>
-              New Year's Resolution Bingo
+              {title}
             </h2>
             <div className="flex justify-center gap-8 text-xl font-bold tracking-widest">
               {'BINGO'.split('').map((letter, i) => (
@@ -240,7 +240,7 @@ export function BingoCard({
         ) : isIllustrated ? (
           <div className="text-center space-y-2">
             <h2 className="text-3xl md:text-5xl font-bold" style={{ fontFamily: 'cursive' }}>
-              Resolutions Bingo
+              {title}
             </h2>
             <div className="flex justify-center gap-4 text-sm text-gray-500">
               <span>New Year's</span>
