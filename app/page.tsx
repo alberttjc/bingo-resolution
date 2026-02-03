@@ -44,7 +44,7 @@ export default function HomePage() {
             <span className="font-black text-xl uppercase tracking-tight">Resolution Bingo</span>
           </div>
           <Button asChild className="font-bold uppercase">
-            <Link href="/create">Create Card</Link>
+            <Link href="/create?reset=true">Create Card</Link>
           </Button>
         </div>
       </header>
@@ -79,7 +79,7 @@ export default function HomePage() {
             </p>
 
             <Button size="lg" className="text-lg px-10 py-6 font-bold uppercase tracking-wide" asChild>
-              <Link href="/create">
+              <Link href="/create?reset=true">
                 Create Your Bingo Card
               </Link>
             </Button>

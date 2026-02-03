@@ -4,7 +4,7 @@ import React from "react"
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -19,6 +19,7 @@ import { BingoCard, themes } from '@/components/bingo-card'
 
 export default function CreatePage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { cardData, updateGoals, updateTheme, updateFont, updateTitle, updateBackgroundImage, updateStep: saveStep } = useBingo()
   const [step, setStep] = useState(cardData.currentStep || 1)
   const [goals, setGoals] = useState<string[]>(cardData.goals)
@@ -28,6 +29,17 @@ export default function CreatePage() {
   useEffect(() => {
     setGoals(cardData.goals)
   }, [cardData.goals])
+
+  // Reset to step 1 when coming from home page
+  useEffect(() => {
+    const shouldReset = searchParams.get('reset') === 'true'
+    if (shouldReset && step !== 1) {
+      setStep(1)
+      // Clean up URL parameter
+      router.replace('/create', { scroll: false })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Save step to context when it changes
   useEffect(() => {
