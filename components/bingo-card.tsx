@@ -258,7 +258,7 @@ export function BingoCard({
         )}
 
         {/* Bingo Grid */}
-        <div className={cn('grid grid-cols-5', isVintage ? 'gap-3 md:gap-4' : 'gap-2 md:gap-3')}>
+        <div className={cn('grid grid-cols-5 gap-2 md:gap-3')}>
           {displayGoals.map((goal, index) => {
             const isFreeSpace = index === 12
             const isCompleted = completedCells.has(index)
@@ -299,8 +299,8 @@ export function BingoCard({
                 ) : (
                   <span className={cn(
                     'leading-tight break-words',
-                    isVintage 
-                      ? 'text-xs md:text-sm font-semibold text-[#E63946]'
+                    isVintage
+                      ? 'text-[10px] md:text-xs font-semibold text-[#E63946]'
                       : isModern
                       ? 'text-[9px] md:text-xs font-normal text-gray-900'
                       : isWhimsical
