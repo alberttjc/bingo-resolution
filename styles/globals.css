@@ -123,3 +123,215 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Bingo Theme System CSS Variables and Effects */
+[data-bingo-theme] {
+  /* Card variables */
+  --bingo-card-bg: var(--theme-card-bg, var(--card));
+  --bingo-card-border: var(--theme-card-border, var(--border));
+  --bingo-card-padding: var(--theme-card-padding, 2rem);
+  --bingo-card-radius: var(--theme-card-radius, 12px);
+  --bingo-card-shadow: var(--theme-card-shadow, none);
+
+  /* Cell variables */
+  --bingo-cell-bg: var(--theme-cell-bg, var(--card));
+  --bingo-cell-border: var(--theme-cell-border, var(--border));
+  --bingo-cell-color: var(--theme-cell-color, var(--foreground));
+  --bingo-cell-radius: var(--theme-cell-radius, 8px);
+  --bingo-cell-gap: var(--theme-cell-gap, 0.5rem);
+  --bingo-cell-shadow: var(--theme-cell-shadow, none);
+
+  /* Cell hover */
+  --bingo-cell-hover-bg: var(--theme-cell-hover-bg, var(--accent));
+  --bingo-cell-hover-border: var(--theme-cell-hover-border, var(--border));
+  --bingo-cell-hover-shadow: var(--theme-cell-hover-shadow, none);
+
+  /* Marked cells */
+  --bingo-marked-bg: var(--theme-marked-bg, var(--muted));
+  --bingo-marked-border: var(--theme-marked-border, var(--border));
+  --bingo-marked-color: var(--theme-marked-color, var(--muted-foreground));
+
+  /* Free space */
+  --bingo-free-bg: var(--theme-free-bg, var(--secondary));
+  --bingo-free-border: var(--theme-free-border, var(--border));
+  --bingo-free-color: var(--theme-free-color, var(--secondary-foreground));
+
+  /* Header */
+  --bingo-header-bg: var(--theme-header-bg, transparent);
+  --bingo-header-color: var(--theme-header-color, var(--foreground));
+  --bingo-header-border: var(--theme-header-border, var(--border));
+
+  /* Typography */
+  --bingo-font-family: var(--theme-font-family, var(--font-sans));
+  --bingo-font-size: var(--theme-font-size, 0.625rem);
+  --bingo-font-weight: var(--theme-font-weight, 500);
+  --bingo-letter-spacing: var(--theme-letter-spacing, 0);
+  --bingo-text-transform: var(--theme-text-transform, none);
+
+  /* Effects */
+  --bingo-glow-color: var(--theme-glow-color, transparent);
+  --bingo-glow-intensity: var(--theme-glow-intensity, 0);
+  --bingo-blur: var(--theme-blur, 0);
+  --bingo-glass-opacity: var(--theme-glass-opacity, 1);
+
+  /* Gradients */
+  --bingo-gradient-start: var(--theme-gradient-start, var(--card));
+  --bingo-gradient-end: var(--theme-gradient-end, var(--card));
+  --bingo-gradient-mid: var(--theme-gradient-mid, '');
+  --bingo-gradient-duration: var(--theme-gradient-duration, 0s);
+
+  /* Pattern */
+  --bingo-pattern-opacity: var(--theme-pattern-opacity, 0);
+  --bingo-pattern-color: var(--theme-pattern-color, currentColor);
+}
+
+/* Glassmorphism effect */
+.bingo-glass {
+  backdrop-filter: blur(var(--bingo-blur));
+  -webkit-backdrop-filter: blur(var(--bingo-blur));
+  background: rgba(255, 255, 255, var(--bingo-glass-opacity));
+  border: 1px solid rgba(255, 255, 255, calc(var(--bingo-glass-opacity) * 2));
+}
+
+.dark .bingo-glass {
+  background: rgba(0, 0, 0, var(--bingo-glass-opacity));
+  border: 1px solid rgba(255, 255, 255, calc(var(--bingo-glass-opacity) * 1.5));
+}
+
+/* Neon glow effect */
+.bingo-neon-glow {
+  box-shadow:
+    0 0 calc(var(--bingo-glow-intensity) * 5px) var(--bingo-glow-color),
+    0 0 calc(var(--bingo-glow-intensity) * 10px) var(--bingo-glow-color),
+    0 0 calc(var(--bingo-glow-intensity) * 15px) var(--bingo-glow-color);
+}
+
+/* Animated neon glow pulse */
+@keyframes neon-pulse {
+  0%, 100% {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  50% {
+    opacity: 0.8;
+    filter: brightness(1.2);
+  }
+}
+
+.bingo-neon-pulse {
+  animation: neon-pulse var(--bingo-gradient-duration, 2s) ease-in-out infinite;
+}
+
+/* Animated gradient background */
+@keyframes gradient-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+.bingo-gradient-animated {
+  background-size: 200% 200%;
+  animation: gradient-shift var(--bingo-gradient-duration, 8s) ease infinite;
+}
+
+/* Geometric pattern overlay */
+.bingo-pattern-dots {
+  background-image: radial-gradient(
+    circle,
+    var(--bingo-pattern-color) 1px,
+    transparent 1px
+  );
+  background-size: 20px 20px;
+  opacity: var(--bingo-pattern-opacity);
+}
+
+.bingo-pattern-grid {
+  background-image:
+    linear-gradient(var(--bingo-pattern-color) 1px, transparent 1px),
+    linear-gradient(90deg, var(--bingo-pattern-color) 1px, transparent 1px);
+  background-size: 20px 20px;
+  opacity: var(--bingo-pattern-opacity);
+}
+
+.bingo-pattern-circuit {
+  background-image:
+    linear-gradient(90deg, var(--bingo-pattern-color) 1px, transparent 1px),
+    linear-gradient(var(--bingo-pattern-color) 1px, transparent 1px),
+    linear-gradient(45deg, transparent 48%, var(--bingo-pattern-color) 48%, var(--bingo-pattern-color) 52%, transparent 52%);
+  background-size: 40px 40px, 40px 40px, 20px 20px;
+  opacity: var(--bingo-pattern-opacity);
+}
+
+.bingo-pattern-waves {
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--bingo-pattern-color) 0px,
+    var(--bingo-pattern-color) 2px,
+    transparent 2px,
+    transparent 10px
+  );
+  opacity: var(--bingo-pattern-opacity);
+}
+
+.bingo-pattern-geometric {
+  background-image:
+    linear-gradient(45deg, var(--bingo-pattern-color) 25%, transparent 25%),
+    linear-gradient(-45deg, var(--bingo-pattern-color) 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, var(--bingo-pattern-color) 75%),
+    linear-gradient(-45deg, transparent 75%, var(--bingo-pattern-color) 75%);
+  background-size: 40px 40px;
+  background-position: 0 0, 0 20px, 20px -20px, -20px 0px;
+  opacity: var(--bingo-pattern-opacity);
+}
+
+/* Scalloped border clip-path */
+.bingo-border-scalloped {
+  clip-path: polygon(
+    /* Top scallops */
+    0 5%, 2.5% 2.5%, 5% 5%, 7.5% 2.5%, 10% 5%, 12.5% 2.5%, 15% 5%, 17.5% 2.5%, 20% 5%,
+    22.5% 2.5%, 25% 5%, 27.5% 2.5%, 30% 5%, 32.5% 2.5%, 35% 5%, 37.5% 2.5%, 40% 5%,
+    42.5% 2.5%, 45% 5%, 47.5% 2.5%, 50% 5%, 52.5% 2.5%, 55% 5%, 57.5% 2.5%, 60% 5%,
+    62.5% 2.5%, 65% 5%, 67.5% 2.5%, 70% 5%, 72.5% 2.5%, 75% 5%, 77.5% 2.5%, 80% 5%,
+    82.5% 2.5%, 85% 5%, 87.5% 2.5%, 90% 5%, 92.5% 2.5%, 95% 5%, 97.5% 2.5%,
+    /* Right side */
+    100% 5%, 100% 95%,
+    /* Bottom scallops (reversed) */
+    97.5% 97.5%, 95% 95%, 92.5% 97.5%, 90% 95%, 87.5% 97.5%, 85% 95%, 82.5% 97.5%, 80% 95%,
+    77.5% 97.5%, 75% 95%, 72.5% 97.5%, 70% 95%, 67.5% 97.5%, 65% 95%, 62.5% 97.5%, 60% 95%,
+    57.5% 97.5%, 55% 95%, 52.5% 97.5%, 50% 95%, 47.5% 97.5%, 45% 95%, 42.5% 97.5%, 40% 95%,
+    37.5% 97.5%, 35% 95%, 32.5% 97.5%, 30% 95%, 27.5% 97.5%, 25% 95%, 22.5% 97.5%, 20% 95%,
+    17.5% 97.5%, 15% 95%, 12.5% 97.5%, 10% 95%, 7.5% 97.5%, 5% 95%, 2.5% 97.5%,
+    /* Left side */
+    0 95%, 0 5%
+  );
+}
+
+/* Geometric border clip-path */
+.bingo-border-geometric {
+  clip-path: polygon(
+    0 8%, 8% 0, 92% 0, 100% 8%,
+    100% 92%, 92% 100%, 8% 100%, 0 92%
+  );
+}
+
+/* Export-friendly fallbacks (for html-to-image) */
+@media print {
+  .bingo-glass {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .bingo-gradient-animated {
+    animation: none;
+  }
+
+  .bingo-neon-pulse {
+    animation: none;
+  }
+}

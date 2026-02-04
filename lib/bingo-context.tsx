@@ -2,6 +2,8 @@
 
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react'
 import { shuffleArray, templates } from './templates'
+import type { ThemeCustomization } from './themes/types'
+import { getThemeRegistry } from './themes/registry'
 
 export interface BingoCardData {
   goals: string[]
@@ -10,6 +12,7 @@ export interface BingoCardData {
   font: string
   backgroundImage: string | null
   currentStep?: number
+  themeCustomization?: ThemeCustomization
 }
 
 interface BingoContextType {
@@ -20,6 +23,7 @@ interface BingoContextType {
   updateFont: (font: string) => void
   updateBackgroundImage: (image: string | null) => void
   updateStep: (step: number) => void
+  updateThemeCustomization: (customization: ThemeCustomization | undefined) => void
   shuffleGoals: () => void
   resetCard: () => void
 }
@@ -87,6 +91,16 @@ export function BingoProvider({ children }: { children: ReactNode }) {
     setCardData(prev => ({ ...prev, currentStep: step }))
   }
 
+  const updateThemeCustomization = (customization: ThemeCustomization | undefined) => {
+    setCardData(prev => ({ ...prev, themeCustomization: customization }))
+
+    // Save to theme registry if customization is provided
+    if (customization) {
+      const registry = getThemeRegistry()
+      registry.saveCustomization(customization)
+    }
+  }
+
   const shuffleGoals = () => {
     setCardData(prev => ({ ...prev, goals: shuffleArray(prev.goals) }))
   }
@@ -106,6 +120,7 @@ export function BingoProvider({ children }: { children: ReactNode }) {
         updateFont,
         updateBackgroundImage,
         updateStep,
+        updateThemeCustomization,
         shuffleGoals,
         resetCard
       }}

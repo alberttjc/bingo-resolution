@@ -15,7 +15,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowLeft, Shuffle, Sparkles, Palette } from 'lucide-react'
 import { templates, shuffleArray } from '@/lib/templates'
 import { useBingo } from '@/lib/bingo-context'
-import { BingoCard, themes } from '@/components/bingo-card'
+import { BingoCard } from '@/components/bingo-card'
+import { ThemeBrowser } from '@/components/theme-browser'
 
 function CreatePageContent() {
   const router = useRouter()
@@ -206,28 +207,10 @@ function CreatePageContent() {
 
                 <div className="space-y-2">
                   <Label>Color Theme</Label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                    {Object.entries(themes).map(([key, theme]) => (
-                      <button
-                        type="button"
-                        key={key}
-                        onClick={() => updateTheme(key)}
-                        className={`
-                          p-3 rounded-lg border-2 transition-all hover:scale-105
-                          ${cardData.theme === key ? 'ring-2 ring-primary border-primary' : 'border-border'}
-                          ${theme.card}
-                        `}
-                      >
-                        <div className="text-xs font-bold capitalize mb-2">
-                          {key === 'vintage' ? 'Vintage' : key === 'whimsical' ? 'Whimsical' : key === 'modern' ? 'Modern' : key === 'illustrated' ? 'Illustrated' : key}
-                        </div>
-                        <div className="flex gap-1">
-                          <div className={`w-5 h-5 ${theme.cell.split(' ')[0]}`} />
-                          <div className={`w-5 h-5 ${theme.freeSpace.split(' ')[0]}`} />
-                        </div>
-                      </button>
-                    ))}
-                  </div>
+                  <ThemeBrowser
+                    currentTheme={cardData.theme}
+                    onThemeSelect={updateTheme}
+                  />
                 </div>
               </div>
             </div>

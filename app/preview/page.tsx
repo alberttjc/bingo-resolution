@@ -13,7 +13,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { ArrowLeft, Shuffle, Download, Share2, Palette, Type, ImageIcon } from 'lucide-react'
 import { useBingo } from '@/lib/bingo-context'
-import { BingoCard, themes } from '@/components/bingo-card'
+import { BingoCard } from '@/components/bingo-card'
+import { ThemeBrowser } from '@/components/theme-browser'
 
 export default function PreviewPage() {
   const router = useRouter()
@@ -159,28 +160,10 @@ export default function PreviewPage() {
                   <TabsContent value="theme" className="space-y-4">
                     <div className="space-y-2">
                       <Label>Color Theme</Label>
-                      <div className="grid grid-cols-2 gap-3">
-                        {Object.entries(themes).map(([key, theme]) => (
-                          <button
-                            type="button"
-                            key={key}
-                            onClick={() => updateTheme(key)}
-                            className={`
-                              p-4 rounded-lg border-2 transition-all hover:scale-105
-                              ${cardData.theme === key ? 'ring-2 ring-primary border-primary' : 'border-border'}
-                              ${theme.card}
-                            `}
-                          >
-                            <div className="text-xs font-bold capitalize mb-2">
-                              {key === 'vintage' ? '🎯 Vintage (Classic)' : key}
-                            </div>
-                            <div className="flex gap-1">
-                              <div className={`w-6 h-6 ${theme.cell.split(' ')[0]}`} />
-                              <div className={`w-6 h-6 ${theme.freeSpace.split(' ')[0]}`} />
-                            </div>
-                          </button>
-                        ))}
-                      </div>
+                      <ThemeBrowser
+                        currentTheme={cardData.theme}
+                        onThemeSelect={updateTheme}
+                      />
                     </div>
                   </TabsContent>
 
